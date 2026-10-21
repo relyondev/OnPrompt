@@ -221,15 +221,8 @@ function AppContent() {
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
-    <div className="app-shell min-h-screen page-enter text-slate-800 dark:text-slate-100">
-      <div className="ambient-scene" aria-hidden="true">
-        <span className="ambient-orb ambient-orb-top" />
-        <span className="ambient-orb ambient-orb-left" />
-        <span className="ambient-orb ambient-orb-yellow" />
-        <span className="ambient-mark" />
-        <span className="ambient-spark" />
-      </div>
-      <div className="relative z-10 flex w-full">
+    <div className="min-h-screen bg-[#f8fafc] dark:bg-[#060f1e] page-enter text-slate-800 dark:text-slate-100">
+      <div className="flex w-full">
         {/* Navigation Sidebar */}
         <Sidebar 
           projects={projects} 
