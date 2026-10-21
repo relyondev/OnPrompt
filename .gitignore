@@ -1,0 +1,17 @@
+# Dependencies and build artifacts
+node_modules/
+dist/
+
+# Firebase local state and debug logs
+.firebase/
+firebase-debug.log
+
+# Local environment configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+*.swp

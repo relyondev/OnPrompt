@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title id="title">On Prompt by Relyon Dev</title>
+  <defs>
+    <linearGradient id="blue" x1="0" y1="1" x2="1" y2="0">
+      <stop stop-color="#006BFF"/>
+      <stop offset="1" stop-color="#00D2FF"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#blue)">
+    <rect x="20" y="112" width="23" height="63" rx="11.5"/>
+    <rect x="213" y="112" width="23" height="63" rx="11.5"/>
+    <path d="M100 73H156C190 73 211 96 211 129V157C211 177 202 190 189 199V219C189 230 177 233 169 226L151 211H100C66 211 45 190 45 157V129C45 96 66 73 100 73Z"/>
+  </g>
+  <rect x="67" y="101" width="122" height="81" rx="39" fill="#FFF"/>
+  <g fill="#006BFF">
+    <circle cx="104" cy="142" r="13"/>
+    <circle cx="151" cy="142" r="13"/>
+    <path d="M119 54H137L142 82C144 103 112 103 114 82Z"/>
+  </g>
+  <circle cx="128" cy="42" r="18" fill="#FFC800"/>
+</svg>

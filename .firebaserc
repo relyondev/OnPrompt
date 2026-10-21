@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "relyon-app"
+  },
+  "targets": {
+    "relyon-app": {
+      "hosting": {
+        "relyon-onprompt": [
+          "relyon-onprompt"
+        ]
+      }
+    }
+  }
+}
