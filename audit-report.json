@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "auditTitle": "OnPrompt Application Architecture & Security Audit Report",
+  "auditTimestamp": "2026-10-22T01:59:00Z",
+  "status": "COMPLETED_AND_DEPLOYED",
+  "systemOverview": {
+    "frontendFramework": {
+      "name": "React",
+      "version": "18.2.0",
+      "paradigm": "Functional components with Hooks (useState, useEffect, useMemo, useRef, useContext)"
+    },
+    "buildSystem": {
+      "name": "Vite",
+      "version": "5.1.5",
+      "plugin": "@vitejs/plugin-react 4.2.1",
+      "outDir": "dist"
+    },
+    "language": {
+      "name": "TypeScript",
+      "version": "5.3.3",
+      "target": "ES2020",
+      "moduleResolution": "bundler"
+    },
+    "styling": {
+      "framework": "Tailwind CSS",
+      "version": "3.4.1",
+      "plugins": ["postcss", "autoprefixer"],
+      "iconLibrary": "lucide-react 0.344.0"
+    },
+    "backend": {
+      "provider": "Google Firebase",
+      "sdkVersion": "10.8.1 (Modular)",
+      "services": ["Authentication", "Cloud Firestore", "Cloud Storage", "Hosting"]
+    },
+    "hosting": {
+      "provider": "Firebase Hosting",
+      "siteId": "relyon-onprompt",
+      "projectId": "relyon-app",
+      "projectNumber": "870433620303",
+      "liveUrl": "https://relyon-onprompt.web.app"
+    },
+    "externalIntegrations": [
+      {
+        "name": "Google Drive REST API",
+        "version": "v3",
+        "purpose": "Multipart image attachment storage and media retrieval via user OAuth drive.file scope"
+      }
+    ]
+  },
+  "authentication": {
+    "provider": "GoogleAuthProvider",
+    "method": "signInWithPopup",
+    "scopes": ["https://www.googleapis.com/auth/drive.file"],
+    "accessScope": "Google Accounts (@gmail.com and Google Workspace custom domains)",
+    "sessionHandling": "onAuthStateChanged listener, Drive OAuth token cached in sessionStorage",
+    "loginComponent": "src/components/LoginForm.tsx"
+  },
+  "firestoreSchema": {
+    "collections": [
+      {
+        "name": "prompts",
+        "queryFilter": "userId == request.auth.uid",
+        "fields": {
+          "id": "string",
+          "userId": "string",
+          "title": "string",
+          "content": "string",
+          "project": "string",
+          "category": "string",
+          "tags": "string[]",
+          "promptType": "TXT_TO_TXT | TXT_TO_IMG | IMG_TO_IMG",
+          "promptFormat": "general | json | structured",
+          "promptVariants": "object",
+          "testedModel": "string",
+          "testedModels": "string[]",
+          "attachments": "object[]",
+          "version": "number",
+          "usageCount": "number",
+          "isFavorite": "boolean",
+          "createdAt": "Timestamp",
+          "updatedAt": "Timestamp"
+        }
+      },
+      {
+        "name": "projects",
+        "queryFilter": "userId == request.auth.uid",
+        "fields": {
+          "id": "string",
+          "userId": "string",
+          "name": "string",
+          "description": "string",
+          "createdAt": "Timestamp"
+        }
+      },
+      {
+        "name": "categories",
+        "queryFilter": "userId == request.auth.uid",
+        "fields": {
+          "id": "string",
+          "userId": "string",
+          "projectId": "string",
+          "name": "string"
+        }
+      }
+    ],
+    "dualStorageFallback": {
+      "mechanism": "Automatic fallback to browser localStorage if Firestore is offline or unauthenticated",
+      "keys": [
+        "prompt-manager-prompts",
+        "prompt-manager-projects",
+        "prompt-manager-categories",
+        "prompt-manager-settings-${uid}"
+      ]
+    }
+  },
+  "securityFindings": [
+    {
+      "id": "SEC-01",
+      "severity": "HIGH",
+      "title": "Missing Versioned Firestore Security Rules",
+      "description": "Database lacked local git-versioned firestore.rules, posing risk of unauthenticated read/write drift.",
+      "remediationStatus": "RESOLVED",
+      "resolution": "Authored and deployed user-scoped firestore.rules enforcing request.auth.uid == resource.data.userId across all collections."
+    },
+    {
+      "id": "SEC-02",
+      "severity": "MEDIUM",
+      "title": "Drive Access Token Stored in SessionStorage",
+      "description": "Google Drive OAuth access token stored in unencrypted sessionStorage['prompt-manager-drive-token'].",
+      "remediationStatus": "DOCUMENTED",
+      "resolution": "Recommended token memory isolation or backend API proxy integration."
+    },
+    {
+      "id": "SEC-03",
+      "severity": "MEDIUM",
+      "title": "Dual-Storage Silent Fallback Desynchronization",
+      "description": "Obsolete process.env checks forced dataService to silently bypass Firestore and write to localStorage.",
+      "remediationStatus": "RESOLVED",
+      "resolution": "Refactored isFirebaseConfigured() to inspect initialized app options directly; implemented syncLocalToCloud()."
+    },
+    {
+      "id": "SEC-04",
+      "severity": "LOW",
+      "title": "Prompt Usage Count Unrecorded on Copy",
+      "description": "Copying a prompt copied content to clipboard but did not increment usageCount in Firestore.",
+      "remediationStatus": "RESOLVED",
+      "resolution": "Added atomic dataService.incrementUsage(prompt.id) call inside copyPrompt in App.tsx."
+    }
+  ],
+  "testingInfrastructure": {
+    "testRunner": "Vitest 1.6.1",
+    "command": "npm test",
+    "testFiles": [
+      {
+        "path": "src/utils/promptAnalysis.test.ts",
+        "tests": 3,
+        "status": "PASSED"
+      },
+      {
+        "path": "src/services/dataService.test.ts",
+        "tests": 3,
+        "status": "PASSED"
+      }
+    ],
+    "totalPassing": 6,
+    "totalFailing": 0
+  },
+  "fileArchitecture": {
+    "root": [
+      "index.html",
+      "package.json",
+      "vite.config.ts",
+      "tailwind.config.js",
+      "postcss.config.js",
+      "tsconfig.json",
+      "firestore.rules",
+      "firebase.json",
+      ".firebaserc",
+      "audit-report.md",
+      "audit-report.json"
+    ],
+    "src": [
+      "index.tsx",
+      "index.css",
+      "types.ts",
+      "App.tsx"
+    ],
+    "components": [
+      "LoginForm.tsx",
+      "CategoryGrid.tsx",
+      "SearchHeader.tsx",
+      "PromptCard.tsx",
+      "PromptDetailModal.tsx",
+      "PromptForm.tsx",
+      "ProjectForm.tsx",
+      "CategoryForm.tsx",
+      "SettingsModal.tsx",
+      "Sidebar.tsx",
+      "BottomNav.tsx",
+      "StructuredPromptFields.tsx"
+    ],
+    "services": [
+      "firebaseService.ts",
+      "dataService.ts",
+      "googleDriveService.ts",
+      "promptPackService.ts"
+    ],
+    "contexts": [
+      "AuthContext.tsx",
+      "ThemeContext.tsx"
+    ],
+    "utils": [
+      "storage.ts",
+      "settingsStorage.ts",
+      "promptAnalysis.ts"
+    ]
+  }
+}

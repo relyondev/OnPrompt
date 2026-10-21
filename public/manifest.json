@@ -1,0 +1,12 @@
+{
+  "short_name": "On Prompt",
+  "name": "On Prompt — AI prompt workspace",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#2563eb",
+  "background_color": "#f8fafc",
+  "description": "Organize, polish, and reuse your AI prompts anywhere."
+}
