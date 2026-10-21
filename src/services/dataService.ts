@@ -1,325 +1,110 @@
-import { promptService, projectService, categoryService } from "./firebaseService";
+import { promptService, projectService, categoryService, DocumentConflictError } from "./firebaseService";
 import { auth } from "../config/firebase";
 import { Prompt, Project, Category } from "../types";
-import { 
-  getPrompts as getLocalPrompts,
-  savePrompts as saveLocalPrompts,
-  addPrompt as addLocalPrompt,
-  updatePrompt as updateLocalPrompt,
-  deletePrompt as deleteLocalPrompt,
-  getProjects as getLocalProjects,
-  addProject as addLocalProject,
-  updateProject as updateLocalProject,
-  deleteProject as deleteLocalProject,
-  getCategories as getLocalCategories,
-  addCategory as addLocalCategory,
-  updateCategory as updateLocalCategory,
+import {
+  getPrompts as getLocalPrompts, savePrompts as saveLocalPrompts, addPrompt as addLocalPrompt,
+  updatePrompt as updateLocalPrompt, deletePrompt as deleteLocalPrompt, getProjects as getLocalProjects,
+  addProject as addLocalProject, updateProject as updateLocalProject, deleteProject as deleteLocalProject,
+  getCategories as getLocalCategories, addCategory as addLocalCategory, updateCategory as updateLocalCategory,
   deleteCategory as deleteLocalCategory
 } from "../utils/storage";
 
-// Check if Firebase is properly configured from initialized options
+export class DataServiceError extends Error {
+  constructor(message: string, public readonly code = "unknown", public readonly cause?: unknown) {
+    super(message);
+    this.name = "DataServiceError";
+  }
+}
+
+export interface LocalPromptSyncResult {
+  synced: number;
+  conflicts: string[];
+  failures: Array<{ id: string; message: string }>;
+}
+
 export const isFirebaseConfigured = (): boolean => {
   const options = auth?.app?.options;
-  return Boolean(
-    options?.apiKey &&
-    options?.projectId &&
-    !options.apiKey.includes("your-api-key") &&
-    !options.projectId.includes("your-project")
-  );
+  return Boolean(options?.apiKey && options?.projectId && !options.apiKey.includes("your-api-key") && !options.projectId.includes("your-project"));
 };
 
-// Check if current session should use Firestore (configured + authenticated)
-const shouldUseFirestore = (): boolean => {
-  return isFirebaseConfigured() && Boolean(auth.currentUser);
+const requiresCloud = (): boolean => {
+  if (!isFirebaseConfigured()) return false;
+  if (!auth.currentUser) throw new DataServiceError("Sign in before accessing your cloud workspace.", "auth-required");
+  return true;
 };
 
-// Unified Data Service - handles both Firestore and localStorage seamlessly
+const readableError = (error: unknown): DataServiceError => {
+  if (error instanceof DataServiceError) return error;
+  if (error instanceof DocumentConflictError) return new DataServiceError(error.message, "already-exists", error);
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code: string }).code) : "unknown";
+  if (code.includes("permission-denied")) return new DataServiceError("You do not have permission to change this cloud data.", code, error);
+  if (code.includes("unavailable") || code.includes("network")) return new DataServiceError("Cloud storage is unavailable. Check your connection and try again; your local data was not changed.", code, error);
+  if (code.includes("resource-exhausted") || code.includes("quota")) return new DataServiceError("Cloud storage quota was reached. Nothing was saved locally as a fallback.", code, error);
+  return new DataServiceError("Cloud storage could not complete the request. Please try again.", code, error);
+};
+
+const cloud = async <T>(operation: () => Promise<T>): Promise<T> => {
+  try { return await operation(); } catch (error) { throw readableError(error); }
+};
+
 export const dataService = {
-  // Prompt operations
-  async getPrompts(): Promise<Prompt[]> {
-    if (!shouldUseFirestore()) {
-      return getLocalPrompts();
-    }
-    try {
-      return await promptService.getAll();
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      return getLocalPrompts();
-    }
-  },
-
+  async getPrompts(): Promise<Prompt[]> { return requiresCloud() ? cloud(() => promptService.getAll()) : getLocalPrompts(); },
   async addPrompt(prompt: Omit<Prompt, "id"> & Partial<Pick<Prompt, "id">>): Promise<string> {
     const id = prompt.id || crypto.randomUUID();
-    if (!shouldUseFirestore()) {
-      addLocalPrompt({ ...prompt, id } as Prompt);
-      return id;
-    }
-    try {
-      await promptService.add({ ...prompt, id } as Prompt);
-      return id;
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      addLocalPrompt({ ...prompt, id } as Prompt);
-      return id;
-    }
+    if (!requiresCloud()) { addLocalPrompt({ ...prompt, id } as Prompt); return id; }
+    return cloud(() => promptService.add({ ...prompt, id } as Prompt));
   },
-
-  async updatePrompt(prompt: Prompt): Promise<void> {
-    if (!shouldUseFirestore()) {
-      updateLocalPrompt(prompt);
-      return;
-    }
-    try {
-      await promptService.update(prompt.id, prompt);
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      updateLocalPrompt(prompt);
-    }
+  async updatePrompt(prompt: Prompt): Promise<void> { if (!requiresCloud()) return updateLocalPrompt(prompt); return cloud(() => promptService.update(prompt.id, prompt)); },
+  async deletePrompt(id: string): Promise<void> { if (!requiresCloud()) return deleteLocalPrompt(id); return cloud(() => promptService.delete(id)); },
+  async toggleFavorite(id: string, isFavorite: boolean): Promise<void> {
+    if (!requiresCloud()) { saveLocalPrompts(getLocalPrompts().map(p => p.id === id ? { ...p, isFavorite } : p)); return; }
+    return cloud(() => promptService.toggleFavorite(id, isFavorite));
   },
-
-  async deletePrompt(promptId: string): Promise<void> {
-    if (!shouldUseFirestore()) {
-      deleteLocalPrompt(promptId);
-      return;
-    }
-    try {
-      await promptService.delete(promptId);
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      deleteLocalPrompt(promptId);
-    }
+  async incrementUsage(id: string): Promise<void> {
+    if (!requiresCloud()) { saveLocalPrompts(getLocalPrompts().map(p => p.id === id ? { ...p, usageCount: (p.usageCount || 0) + 1 } : p)); return; }
+    return cloud(() => promptService.incrementUsage(id));
   },
-
-  async toggleFavorite(promptId: string, isFavorite: boolean): Promise<void> {
-    if (!shouldUseFirestore()) {
-      const prompts = getLocalPrompts();
-      const updatedPrompts = prompts.map(p => 
-        p.id === promptId ? { ...p, isFavorite } : p
-      );
-      saveLocalPrompts(updatedPrompts);
-      return;
-    }
-    try {
-      await promptService.toggleFavorite(promptId, isFavorite);
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      const prompts = getLocalPrompts();
-      const updatedPrompts = prompts.map(p => 
-        p.id === promptId ? { ...p, isFavorite } : p
-      );
-      saveLocalPrompts(updatedPrompts);
-    }
-  },
-
-  async incrementUsage(promptId: string): Promise<void> {
-    if (!shouldUseFirestore()) {
-      const prompts = getLocalPrompts();
-      const updatedPrompts = prompts.map(p => 
-        p.id === promptId ? { ...p, usageCount: (p.usageCount || 0) + 1 } : p
-      );
-      saveLocalPrompts(updatedPrompts);
-      return;
-    }
-    try {
-      await promptService.incrementUsage(promptId);
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      const prompts = getLocalPrompts();
-      const updatedPrompts = prompts.map(p => 
-        p.id === promptId ? { ...p, usageCount: (p.usageCount || 0) + 1 } : p
-      );
-      saveLocalPrompts(updatedPrompts);
-    }
-  },
-
-  // Project operations
-  async getProjects(): Promise<Project[]> {
-    if (!shouldUseFirestore()) {
-      return getLocalProjects();
-    }
-    try {
-      return await projectService.getAll();
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      return getLocalProjects();
-    }
-  },
-
+  async getProjects(): Promise<Project[]> { return requiresCloud() ? cloud(() => projectService.getAll()) : getLocalProjects(); },
   async addProject(project: Omit<Project, "id">): Promise<string> {
-    const id = crypto.randomUUID();
-    const newProject = { ...project, id, createdAt: new Date() } as Project;
-    if (!shouldUseFirestore()) {
-      addLocalProject(newProject);
-      return id;
-    }
-    try {
-      await projectService.add(newProject);
-      return id;
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      addLocalProject(newProject);
-      return id;
-    }
+    const item = { ...project, id: crypto.randomUUID(), createdAt: new Date() } as Project;
+    if (!requiresCloud()) { addLocalProject(item); return item.id; }
+    return cloud(() => projectService.add(item));
   },
-
-  async updateProject(project: Project): Promise<void> {
-    if (!shouldUseFirestore()) {
-      updateLocalProject(project);
-      return;
-    }
-    try {
-      await projectService.update(project.id, project);
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      updateLocalProject(project);
-    }
-  },
-
-  async deleteProject(projectId: string): Promise<void> {
-    if (!shouldUseFirestore()) {
-      deleteLocalProject(projectId);
-      return;
-    }
-    try {
-      await projectService.delete(projectId);
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      deleteLocalProject(projectId);
-    }
-  },
-
-  // Category operations
-  async getCategories(): Promise<Category[]> {
-    if (!shouldUseFirestore()) {
-      return getLocalCategories();
-    }
-    try {
-      return await categoryService.getAll();
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      return getLocalCategories();
-    }
-  },
-
+  async updateProject(project: Project): Promise<void> { if (!requiresCloud()) return updateLocalProject(project); return cloud(() => projectService.update(project.id, project)); },
+  async deleteProject(id: string): Promise<void> { if (!requiresCloud()) return deleteLocalProject(id); return cloud(() => projectService.delete(id)); },
+  async getCategories(): Promise<Category[]> { return requiresCloud() ? cloud(() => categoryService.getAll()) : getLocalCategories(); },
   async addCategory(category: Omit<Category, "id">): Promise<string> {
-    const id = crypto.randomUUID();
-    const newCategory = { ...category, id } as Category;
-    if (!shouldUseFirestore()) {
-      addLocalCategory(newCategory);
-      return id;
-    }
-    try {
-      await categoryService.add(newCategory);
-      return id;
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      addLocalCategory(newCategory);
-      return id;
-    }
+    const item = { ...category, id: crypto.randomUUID() } as Category;
+    if (!requiresCloud()) { addLocalCategory(item); return item.id; }
+    return cloud(() => categoryService.add(item));
   },
-
-  async updateCategory(category: Category): Promise<void> {
-    if (!shouldUseFirestore()) {
-      updateLocalCategory(category);
-      return;
-    }
-    try {
-      await categoryService.update(category.id, category);
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      updateLocalCategory(category);
-    }
+  async updateCategory(category: Category): Promise<void> { if (!requiresCloud()) return updateLocalCategory(category); return cloud(() => categoryService.update(category.id, category)); },
+  async deleteCategory(id: string): Promise<void> { if (!requiresCloud()) return deleteLocalCategory(id); return cloud(() => categoryService.delete(id)); },
+  subscribeToPrompts(callback: (items: Prompt[]) => void, onError?: (error: DataServiceError) => void) {
+    try { return requiresCloud() ? promptService.subscribeToPrompts(callback, error => onError?.(readableError(error))) : (callback(getLocalPrompts()), () => {}); }
+    catch (error) { onError?.(readableError(error)); return () => {}; }
   },
-
-  async deleteCategory(categoryId: string): Promise<void> {
-    if (!shouldUseFirestore()) {
-      deleteLocalCategory(categoryId);
-      return;
-    }
-    try {
-      await categoryService.delete(categoryId);
-    } catch (error) {
-      console.warn("Firebase failed, falling back to localStorage:", error);
-      deleteLocalCategory(categoryId);
-    }
+  subscribeToProjects(callback: (items: Project[]) => void, onError?: (error: DataServiceError) => void) {
+    try { return requiresCloud() ? projectService.subscribeToProjects(callback, error => onError?.(readableError(error))) : (callback(getLocalProjects()), () => {}); }
+    catch (error) { onError?.(readableError(error)); return () => {}; }
   },
-
-  // Real-time subscriptions
-  subscribeToPrompts(callback: (prompts: Prompt[]) => void) {
-    if (!shouldUseFirestore()) {
-      callback(getLocalPrompts());
-      return () => {};
-    }
-    try {
-      return promptService.subscribeToPrompts(callback, (error) => {
-        console.warn("Firebase prompts subscription failed, using local storage fallback:", error);
-        callback(getLocalPrompts());
-      });
-    } catch (error) {
-      console.warn("Firebase subscription failed, falling back to localStorage:", error);
-      callback(getLocalPrompts());
-      return () => {};
-    }
+  subscribeToCategories(callback: (items: Category[]) => void, onError?: (error: DataServiceError) => void) {
+    try { return requiresCloud() ? categoryService.subscribeToCategories(callback, error => onError?.(readableError(error))) : (callback(getLocalCategories()), () => {}); }
+    catch (error) { onError?.(readableError(error)); return () => {}; }
   },
-
-  subscribeToProjects(callback: (projects: Project[]) => void) {
-    if (!shouldUseFirestore()) {
-      callback(getLocalProjects());
-      return () => {};
-    }
-    try {
-      return projectService.subscribeToProjects(callback, (error) => {
-        console.warn("Firebase projects subscription failed, using local storage fallback:", error);
-        callback(getLocalProjects());
-      });
-    } catch (error) {
-      console.warn("Firebase subscription failed, falling back to localStorage:", error);
-      callback(getLocalProjects());
-      return () => {};
-    }
-  },
-
-  subscribeToCategories(callback: (categories: Category[]) => void) {
-    if (!shouldUseFirestore()) {
-      callback(getLocalCategories());
-      return () => {};
-    }
-    try {
-      return categoryService.subscribeToCategories(callback, (error) => {
-        console.warn("Firebase categories subscription failed, using local storage fallback:", error);
-        callback(getLocalCategories());
-      });
-    } catch (error) {
-      console.warn("Firebase subscription failed, falling back to localStorage:", error);
-      callback(getLocalCategories());
-      return () => {};
-    }
-  },
-
-  // Sync local offline prompts to Firestore
-  async syncLocalToCloud(): Promise<number> {
-    if (!shouldUseFirestore()) return 0;
-    const localPrompts = getLocalPrompts();
-    if (!localPrompts || localPrompts.length === 0) return 0;
-
-    let synced = 0;
-    for (const p of localPrompts) {
-      try {
-        await promptService.add(p);
-        synced++;
-      } catch (e) {
-        console.warn("Sync error for prompt", p.id, e);
+  async syncLocalToCloud(): Promise<LocalPromptSyncResult> {
+    if (!requiresCloud()) throw new DataServiceError("Connect to the cloud and sign in before importing local prompts.", "auth-required");
+    const result: LocalPromptSyncResult = { synced: 0, conflicts: [], failures: [] };
+    for (const prompt of getLocalPrompts()) {
+      try { await cloud(() => promptService.add({ ...prompt, id: prompt.id })); result.synced++; }
+      catch (error) {
+        const safeError = readableError(error);
+        if (safeError.code === "already-exists") result.conflicts.push(prompt.id);
+        else result.failures.push({ id: prompt.id, message: safeError.message });
       }
     }
-    return synced;
+    return result;
   },
-
-  // Utility functions
-  isUsingFirestore(): boolean {
-    return shouldUseFirestore();
-  },
-
-  isUsingLocalStorage(): boolean {
-    return !shouldUseFirestore();
-  }
+  isUsingFirestore(): boolean { return isFirebaseConfigured() && Boolean(auth.currentUser); },
+  isUsingLocalStorage(): boolean { return !isFirebaseConfigured(); }
 };

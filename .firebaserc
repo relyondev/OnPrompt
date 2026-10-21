@@ -1,6 +1,8 @@
 {
   "projects": {
-    "default": "relyon-app"
+    "default": "onprompt-staging",
+    "staging": "onprompt-staging",
+    "production": "relyon-app"
   },
   "targets": {
     "relyon-app": {

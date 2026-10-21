@@ -43,6 +43,7 @@ export interface Project {
   id: string;
   name: string;
   description?: string;
+  color?: string;
   userId?: string;
   createdAt: Date;
 }
@@ -51,6 +52,7 @@ export interface Category {
   id: string;
   name: string;
   projectId?: string;
+  description?: string;
   userId?: string;
 }
 

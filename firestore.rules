@@ -2,23 +2,98 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // User-scoped prompts collection
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(data) {
+      return signedIn() && data.userId == request.auth.uid;
+    }
+
+    function hasNoPrivilegedFields(data) {
+      return !data.keys().hasAny([
+        'moderationStatus', 'role', 'adminNotes', 'adminUsageCount',
+        'adminCounter', 'reportCount', 'ownerRole'
+      ]);
+    }
+
+    function validPrompt(data) {
+      return data.keys().hasAll(['id', 'title', 'content', 'userId', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'title', 'content', 'project', 'category', 'tags', 'isFavorite',
+          'usageCount', 'version', 'promptType', 'promptFormat', 'promptVariants',
+          'testedModel', 'testedModels', 'attachments', 'userId', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 300
+        && data.content is string && data.content.size() <= 100000
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128
+        && data.createdAt is timestamp && data.updatedAt is timestamp
+        && (!data.keys().hasAny(['project']) || (data.project is string && data.project.size() <= 300))
+        && (!data.keys().hasAny(['category']) || (data.category is string && data.category.size() <= 100))
+        && (!data.keys().hasAny(['tags']) || (data.tags is list && data.tags.size() <= 50))
+        && (!data.keys().hasAny(['isFavorite']) || data.isFavorite is bool)
+        && (!data.keys().hasAny(['usageCount']) || (data.usageCount is int && data.usageCount >= 0))
+        && (!data.keys().hasAny(['version']) || (data.version is int && data.version >= 1))
+        && (!data.keys().hasAny(['promptType']) || data.promptType is string)
+        && (!data.keys().hasAny(['promptFormat']) || data.promptFormat is string)
+        && (!data.keys().hasAny(['promptVariants']) || (data.promptVariants is map && data.promptVariants.size() <= 3))
+        && (!data.keys().hasAny(['testedModel']) || data.testedModel is string)
+        && (!data.keys().hasAny(['testedModels']) || (data.testedModels is list && data.testedModels.size() <= 25))
+        && (!data.keys().hasAny(['attachments']) || (data.attachments is list && data.attachments.size() <= 20))
+        && hasNoPrivilegedFields(data);
+    }
+
+    function validProject(data) {
+      return data.keys().hasAll(['id', 'name', 'userId', 'createdAt'])
+        && data.keys().hasOnly(['id', 'name', 'description', 'color', 'userId', 'createdAt'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 300
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128
+        && data.createdAt is timestamp
+        && (!data.keys().hasAny(['description']) || (data.description is string && data.description.size() <= 5000))
+        && (!data.keys().hasAny(['color']) || data.color is string)
+        && hasNoPrivilegedFields(data);
+    }
+
+    function validCategory(data) {
+      return data.keys().hasAll(['id', 'name', 'userId'])
+        && data.keys().hasOnly(['id', 'name', 'description', 'projectId', 'userId'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128
+        && (!data.keys().hasAny(['description']) || (data.description is string && data.description.size() <= 5000))
+        && (!data.keys().hasAny(['projectId']) || (data.projectId is string && data.projectId.size() <= 128))
+        && hasNoPrivilegedFields(data);
+    }
+
     match /prompts/{promptId} {
-      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if isOwner(resource.data);
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid && validPrompt(request.resource.data);
+      allow update: if isOwner(resource.data)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && validPrompt(request.resource.data);
     }
 
-    // User-scoped projects collection
     match /projects/{projectId} {
-      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if isOwner(resource.data);
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid && validProject(request.resource.data);
+      allow update: if isOwner(resource.data)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && validProject(request.resource.data);
     }
 
-    // User-scoped categories collection
     match /categories/{categoryId} {
-      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if isOwner(resource.data);
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid && validCategory(request.resource.data);
+      allow update: if isOwner(resource.data)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && validCategory(request.resource.data);
     }
   }
 }

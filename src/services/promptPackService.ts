@@ -125,5 +125,6 @@ export async function readPromptPack(file: File): Promise<{ manifest: PackManife
 }
 
 export async function uploadImportedAttachment(file: Uint8Array, name: string, mimeType: string, promptId: string, role: PromptAttachment['role'], token: string): Promise<PromptAttachment> {
-  return { ...(await uploadImageToDrive(new File([file], name, { type: mimeType }), promptId, token)), role };
+  const bytes = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer;
+  return { ...(await uploadImageToDrive(new File([bytes], name, { type: mimeType }), promptId, token)), role };
 }

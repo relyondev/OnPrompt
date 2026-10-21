@@ -10,7 +10,8 @@
   onSnapshot,
   Timestamp,
   writeBatch,
-  setDoc
+  runTransaction,
+  increment
 } from "firebase/firestore";
 import { auth, db } from "../config/firebase";
 import { Prompt, Project, Category } from "../types";
@@ -21,6 +22,13 @@ const COLLECTIONS = {
   PROJECTS: "projects",
   CATEGORIES: "categories"
 };
+
+export class DocumentConflictError extends Error {
+  constructor(collectionName: string, id: string) {
+    super(`A ${collectionName} item with this ID already exists. No cloud data was overwritten.`);
+    this.name = "DocumentConflictError";
+  }
+}
 
 // Get current user ID
 const getCurrentUserId = (): string => {
@@ -58,6 +66,21 @@ const convertToTimestamp = (date: any): Timestamp => {
     }
   }
   return Timestamp.now();
+};
+
+const createIfAbsent = async (collectionName: string, id: string, data: Record<string, unknown>): Promise<void> => {
+  const ref = doc(db, collectionName, id);
+  await runTransaction(db, async transaction => {
+    const existing = await transaction.get(ref);
+    if (existing.exists()) throw new DocumentConflictError(collectionName, id);
+    transaction.set(ref, data);
+  });
+};
+
+const withoutProtectedFields = <T extends Record<string, unknown>>(updates: T, protectedFields: string[]): Omit<T, string> => {
+  const safeUpdates: Record<string, unknown> = { ...updates };
+  protectedFields.forEach(field => delete safeUpdates[field]);
+  return safeUpdates as Omit<T, string>;
 };
 
 const sortPromptsByUpdatedAt = (prompts: Prompt[]): Prompt[] => {
@@ -146,7 +169,7 @@ export const promptService = {
   // Add new prompt
   async add(prompt: Omit<Prompt, "id"> & { id: string }): Promise<string> {
     const userId = getCurrentUserId();
-    await setDoc(doc(collection(db, COLLECTIONS.PROMPTS), prompt.id), {
+    await createIfAbsent(COLLECTIONS.PROMPTS, prompt.id, {
       ...prompt,
       userId,
       createdAt: convertToTimestamp(prompt.createdAt),
@@ -157,9 +180,10 @@ export const promptService = {
 
   // Update prompt
   async update(id: string, updates: Partial<Prompt>): Promise<void> {
+    getCurrentUserId();
     const docRef = doc(db, COLLECTIONS.PROMPTS, id);
     const updateData = {
-      ...updates,
+      ...withoutProtectedFields(updates as Record<string, unknown>, ["id", "userId", "createdAt"]),
       updatedAt: convertToTimestamp(new Date())
     };
     await updateDoc(docRef, updateData);
@@ -185,12 +209,8 @@ export const promptService = {
 
   // Increment usage count
   async incrementUsage(id: string): Promise<void> {
-    const docRef = doc(db, COLLECTIONS.PROMPTS, id);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const currentCount = docSnap.data().usageCount || 0;
-      await updateDoc(docRef, { usageCount: currentCount + 1 });
-    }
+    getCurrentUserId();
+    await updateDoc(doc(db, COLLECTIONS.PROMPTS, id), { usageCount: increment(1), updatedAt: convertToTimestamp(new Date()) });
   },
 
   // Real-time listener for prompts with safe in-memory sorting & error handling
@@ -241,7 +261,7 @@ export const projectService = {
   // Add new project
   async add(project: Omit<Project, "id"> & { id: string }): Promise<string> {
     const userId = getCurrentUserId();
-    await setDoc(doc(collection(db, COLLECTIONS.PROJECTS), project.id), {
+    await createIfAbsent(COLLECTIONS.PROJECTS, project.id, {
       ...project,
       userId,
       createdAt: convertToTimestamp(project.createdAt)
@@ -251,8 +271,9 @@ export const projectService = {
 
   // Update project
   async update(id: string, updates: Partial<Project>): Promise<void> {
+    getCurrentUserId();
     const docRef = doc(db, COLLECTIONS.PROJECTS, id);
-    await updateDoc(docRef, updates);
+    await updateDoc(docRef, withoutProtectedFields(updates as Record<string, unknown>, ["id", "userId", "createdAt"]));
   },
 
   // Delete project and all associated prompts
@@ -285,7 +306,8 @@ export const projectService = {
       console.log("ProjectService: Found", promptsSnapshot.docs.length, "prompts to delete");
       
       promptsSnapshot.docs.forEach(docSnap => {
-        batch.delete(docSnap.ref);
+        const prompt = docSnap.data();
+        if (prompt.userId === userId && prompt.project === projectName) batch.delete(docSnap.ref);
       });
       
       batch.delete(doc(db, COLLECTIONS.PROJECTS, id));
@@ -357,7 +379,7 @@ export const categoryService = {
   // Add new category
   async add(category: Omit<Category, "id"> & { id: string }): Promise<string> {
     const userId = getCurrentUserId();
-    await setDoc(doc(collection(db, COLLECTIONS.CATEGORIES), category.id), {
+    await createIfAbsent(COLLECTIONS.CATEGORIES, category.id, {
       ...category,
       userId
     });
@@ -366,8 +388,9 @@ export const categoryService = {
 
   // Update category
   async update(id: string, updates: Partial<Category>): Promise<void> {
+    getCurrentUserId();
     const docRef = doc(db, COLLECTIONS.CATEGORIES, id);
-    await updateDoc(docRef, updates);
+    await updateDoc(docRef, withoutProtectedFields(updates as Record<string, unknown>, ["id", "userId"]));
   },
 
   // Delete category

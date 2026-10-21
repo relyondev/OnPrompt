@@ -85,18 +85,18 @@ function AppContent() {
       setPrompts(nextPrompts);
       setProjects(nextProjects);
       setCategories(nextCategories);
-    });
+    }).catch((error: Error) => setCloudMessage(error.message || 'Unable to load cloud data.'));
 
     // Real-time synchronization
     const unsubPrompts = dataService.subscribeToPrompts((nextPrompts) => {
       setPrompts(nextPrompts);
-    });
+    }, error => setCloudMessage(error.message));
     const unsubProjects = dataService.subscribeToProjects((nextProjects) => {
       setProjects(nextProjects);
-    });
+    }, error => setCloudMessage(error.message));
     const unsubCategories = dataService.subscribeToCategories((nextCategories) => {
       setCategories(nextCategories);
-    });
+    }, error => setCloudMessage(error.message));
 
     return () => {
       unsubPrompts();
@@ -183,21 +183,18 @@ function AppContent() {
 
   if (!currentUser) return <LoginForm />;
 
-  const savePrompt = async (prompt: Prompt) => {
-    if (editingPrompt) await dataService.updatePrompt(prompt); else await dataService.addPrompt(prompt);
-    await refreshPrompts(); setShowPromptForm(false); setEditingPrompt(undefined);
-  };
-  const deletePrompt = async (id: string) => { if (window.confirm("Delete this prompt?")) { await dataService.deletePrompt(id); await refreshPrompts(); } };
-  const toggleFavorite = async (id: string) => { const prompt = prompts.find(item => item.id === id); if (prompt) { await dataService.toggleFavorite(id, !prompt.isFavorite); await refreshPrompts(); } };
+  const savePrompt = async (prompt: Prompt) => { try { if (editingPrompt) await dataService.updatePrompt(prompt); else await dataService.addPrompt(prompt); await refreshPrompts(); setShowPromptForm(false); setEditingPrompt(undefined); } catch (error: any) { setCloudMessage(error.message || 'Unable to save this prompt.'); } };
+  const deletePrompt = async (id: string) => { if (window.confirm("Delete this prompt?")) { try { await dataService.deletePrompt(id); await refreshPrompts(); } catch (error: any) { setCloudMessage(error.message || 'Unable to delete this prompt.'); } } };
+  const toggleFavorite = async (id: string) => { const prompt = prompts.find(item => item.id === id); if (prompt) { try { await dataService.toggleFavorite(id, !prompt.isFavorite); await refreshPrompts(); } catch (error: any) { setCloudMessage(error.message || 'Unable to update this prompt.'); } } };
   const copyPrompt = (prompt: Prompt, content?: string) => {
     navigator.clipboard.writeText(content ?? prompt.content);
     setShowCopiedMessage(true);
     setTimeout(() => setShowCopiedMessage(false), 2000);
     dataService.incrementUsage(prompt.id);
   };
-  const saveProject = async (project: Project) => { if (editingProject) await dataService.updateProject(project); else await dataService.addProject(project); await refreshProjects(); setShowProjectForm(false); setEditingProject(undefined); if (shouldReopenPromptForm) { setShowPromptForm(true); setShouldReopenPromptForm(false); } };
-  const deleteProject = async (id: string) => { if (window.confirm("Delete this category and its prompts?")) { await dataService.deleteProject(id); await refreshProjects(); await refreshPrompts(); } };
-  const saveCategory = async (category: Category) => { if (editingCategory) await dataService.updateCategory(category); else await dataService.addCategory(category); await refreshCategories(); setShowCategoryForm(false); setEditingCategory(undefined); };
+  const saveProject = async (project: Project) => { try { if (editingProject) await dataService.updateProject(project); else await dataService.addProject(project); await refreshProjects(); setShowProjectForm(false); setEditingProject(undefined); if (shouldReopenPromptForm) { setShowPromptForm(true); setShouldReopenPromptForm(false); } } catch (error: any) { setCloudMessage(error.message || 'Unable to save this project.'); } };
+  const deleteProject = async (id: string) => { if (window.confirm("Delete this category and its prompts?")) { try { await dataService.deleteProject(id); await refreshProjects(); await refreshPrompts(); } catch (error: any) { setCloudMessage(error.message || 'Unable to delete this project.'); } } };
+  const saveCategory = async (category: Category) => { try { if (editingCategory) await dataService.updateCategory(category); else await dataService.addCategory(category); await refreshCategories(); setShowCategoryForm(false); setEditingCategory(undefined); } catch (error: any) { setCloudMessage(error.message || 'Unable to save this category.'); } };
 
   const handleBottomNavSelect = (tab: string) => {
     if (tab === 'discover') {
@@ -224,8 +221,15 @@ function AppContent() {
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] dark:bg-[#060f1e] page-enter text-slate-800 dark:text-slate-100">
-      <div className="flex w-full">
+    <div className="app-shell min-h-screen page-enter text-slate-800 dark:text-slate-100">
+      <div className="ambient-scene" aria-hidden="true">
+        <span className="ambient-orb ambient-orb-top" />
+        <span className="ambient-orb ambient-orb-left" />
+        <span className="ambient-orb ambient-orb-yellow" />
+        <span className="ambient-mark" />
+        <span className="ambient-spark" />
+      </div>
+      <div className="relative z-10 flex w-full">
         {/* Navigation Sidebar */}
         <Sidebar 
           projects={projects} 

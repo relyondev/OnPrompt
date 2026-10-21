@@ -121,6 +121,77 @@
                 color var(--op-std) var(--op-ease);
   }
 
+  .app-shell {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 100% 0%, rgba(0, 210, 255, 0.18), transparent 28rem),
+      radial-gradient(circle at 0% 100%, rgba(0, 107, 255, 0.16), transparent 32rem),
+      var(--op-bg);
+    transition: background var(--op-std) var(--op-ease);
+  }
+
+  .dark .app-shell {
+    background:
+      radial-gradient(circle at 100% 0%, rgba(0, 210, 255, 0.22), transparent 30rem),
+      radial-gradient(circle at 0% 100%, rgba(0, 107, 255, 0.18), transparent 34rem),
+      #071a3b;
+  }
+
+  .ambient-scene {
+    position: fixed;
+    z-index: 0;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .ambient-orb,
+  .ambient-mark,
+  .ambient-spark {
+    position: absolute;
+    display: block;
+  }
+
+  .ambient-orb { border-radius: 999px; filter: saturate(1.05); }
+  .ambient-orb-top {
+    width: min(43vw, 44rem); height: min(43vw, 44rem); right: -10rem; top: -20rem;
+    background: radial-gradient(circle at 58% 58%, #00d2ff 0 25%, #006bff 26% 50%, rgba(0, 107, 255, 0.15) 51% 70%, transparent 71%);
+    opacity: 0.7;
+  }
+  .ambient-orb-left {
+    width: min(38vw, 34rem); height: min(38vw, 34rem); left: -14rem; bottom: -15rem;
+    background: radial-gradient(circle at 70% 34%, #00d2ff 0 23%, #006bff 24% 53%, rgba(0, 107, 255, 0.13) 54% 71%, transparent 72%);
+    opacity: 0.62;
+  }
+  .ambient-orb-yellow {
+    width: 13rem; height: 13rem; right: -6rem; top: 1.5rem;
+    background: radial-gradient(circle at 34% 60%, #ffe37a 0, #ffc800 63%, #f2a700 100%);
+    opacity: 0.84;
+  }
+  .ambient-mark {
+    width: min(35vw, 34rem); height: min(22vw, 22rem); right: -5rem; bottom: -5rem;
+    border: clamp(1.8rem, 4vw, 4rem) solid rgba(0, 107, 255, 0.1);
+    border-left-width: clamp(1rem, 2vw, 2rem); border-radius: 48% 48% 42% 42%;
+    transform: rotate(-5deg);
+  }
+  .ambient-spark {
+    width: 1rem; height: 1rem; left: 57%; top: 22%; border-radius: 999px;
+    background: var(--op-yellow); box-shadow: 0 0 0 0.55rem rgba(255, 200, 0, 0.17), 0 0 2rem rgba(0, 107, 255, 0.38);
+    animation: ambient-drift 10s ease-in-out infinite alternate;
+  }
+  .dark .ambient-orb-top { opacity: 0.94; }
+  .dark .ambient-orb-left { opacity: 0.86; }
+  .dark .ambient-orb-yellow { opacity: 0.96; }
+  .dark .ambient-mark { border-color: rgba(0, 107, 255, 0.28); }
+
+  @keyframes ambient-drift {
+    from { transform: translate3d(-2rem, 0, 0) scale(0.9); }
+    55% { transform: translate3d(3rem, 4rem, 0) scale(1.1); }
+    to { transform: translate3d(-1rem, 8rem, 0) scale(0.96); }
+  }
+
   /* Interactive element base resets */
   button, input, textarea, select {
     -webkit-tap-highlight-color: transparent;

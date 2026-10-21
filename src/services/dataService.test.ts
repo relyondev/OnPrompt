@@ -13,22 +13,21 @@ globalThis.localStorage = {
 
 import { isFirebaseConfigured, dataService } from './dataService';
 
-describe('dataService configuration & local fallback', () => {
+describe('dataService authentication safeguards', () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it('detects initialized Firebase config accurately', () => {
+  it('uses an isolated Firebase configuration during the test run', () => {
     expect(isFirebaseConfigured()).toBe(true);
   });
 
-  it('falls back to localStorage when unauthenticated', async () => {
-    const prompts = await dataService.getPrompts();
-    expect(Array.isArray(prompts)).toBe(true);
+  it('does not silently fall back to localStorage when Firebase is configured but unauthenticated', async () => {
+    await expect(dataService.getPrompts()).rejects.toMatchObject({ code: 'auth-required' });
   });
 
-  it('adds and retrieves prompts in fallback mode', async () => {
-    const id = await dataService.addPrompt({
+  it('does not report unauthenticated cloud saves as successful', async () => {
+    await expect(dataService.addPrompt({
       title: 'Test Prompt',
       content: 'Hello World',
       tags: ['test'],
@@ -36,10 +35,6 @@ describe('dataService configuration & local fallback', () => {
       version: 1,
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
-
-    expect(id).toBeDefined();
-    const all = await dataService.getPrompts();
-    expect(all.some(p => p.id === id)).toBe(true);
+    })).rejects.toMatchObject({ code: 'auth-required' });
   });
 });

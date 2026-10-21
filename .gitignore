@@ -1,15 +1,19 @@
 # Dependencies and build artifacts
 node_modules/
+functions/node_modules/
 dist/
 
 # Firebase local state and debug logs
 .firebase/
 firebase-debug.log
+firestore-debug.log
 
 # Local environment configuration and credentials
 .env
 .env.*
 !.env.example
+*.service-account.json
+firestore-backups/
 
 # Editor and operating-system files
 .DS_Store
